@@ -15,6 +15,7 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, re_path, include
+
 # import api
 
 # 导入restframework的路由
@@ -37,7 +38,7 @@ urlpatterns = [
     # re_path(r'^(?P<version>[v1|v2]+)/', include(router.urls)),
     # path('webscoket/', views.webscoket, name='webscoket'),
 
-
     # api路由
-    path('userapi/', include('userapi.urls'))
+    path('userapi/', include('userapi.urls')),
+    path('meetingapi/', include('meetingapi.urls'))
 ]

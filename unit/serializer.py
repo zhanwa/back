@@ -12,8 +12,17 @@ class UserSerializers(serializers.Serializer):
     name = serializers.CharField()
     # 带选择的
     sex = serializers.CharField(source="get_sex_display")
+
+
 # 调用restframework的类来匹配,简化操作
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.User
         fields = ('u_id', 'token', 'username', 'image')
+
+
+class MeetingSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = models.Meeting
+        # fields要传入元组,如果一个数据时,记得带上逗号啊
+        fields = ('m_id',)

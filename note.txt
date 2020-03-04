@@ -7,3 +7,10 @@ python manage.py startapp [appname]
 
 
  python manage.py shell
+ >>> from myapp.serializers import AccountSerializer
+>>> serializer = AccountSerializer()
+>>> print(repr(serializer))
+AccountSerializer():
+    id = IntegerField(label='ID', read_only=True)
+    name = CharField(allow_blank=True, max_length=100, required=False)
+    owner = PrimaryKeyRelatedField(queryset=User.objects.all())

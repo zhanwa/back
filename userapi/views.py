@@ -1,4 +1,6 @@
 import json
+
+from unit.md5 import md5
 from . import models
 from rest_framework.views import APIView
 from rest_framework import exceptions
@@ -8,15 +10,7 @@ import requests
 from unit.serializer import UserSerializer
 
 
-# 使用md5生成随机字符串
-def md5(user):
-    import hashlib
-    import time
 
-    ctime = str(time.time())
-    m = hashlib.md5(bytes(user, encoding='utf-8'))
-    m.update(bytes(ctime, encoding='utf-8'))
-    return m.hexdigest()
 
 
 class Login(APIView):

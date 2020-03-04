@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     'corsheaders',
     'dwebsocket',
     'userapi',
+    'meetingapi',
 ]
 
 MIDDLEWARE = [

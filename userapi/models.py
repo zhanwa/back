@@ -35,7 +35,7 @@ class Meeting(models.Model):
     m_content = models.CharField(max_length=255, blank=True, null=True)
     mcreator_id = models.CharField(db_column='mCreator_id', max_length=255, blank=True, null=True)  # Field name made lowercase.
     mlabel = models.CharField(db_column='mLabel', max_length=255, blank=True, null=True)  # Field name made lowercase.
-
+    objects = models.Manager()
     class Meta:
         db_table = 'meeting'
 
