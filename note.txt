@@ -14,3 +14,7 @@ AccountSerializer():
     id = IntegerField(label='ID', read_only=True)
     name = CharField(allow_blank=True, max_length=100, required=False)
     owner = PrimaryKeyRelatedField(queryset=User.objects.all())
+
+
+
+python manage.py runserver 0.0.0.0:8000
