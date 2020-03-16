@@ -1,4 +1,5 @@
 import json
+import uuid
 
 from unit.md5 import md5
 from . import models
@@ -8,9 +9,6 @@ from rest_framework.request import Request
 from django.http import JsonResponse
 import requests
 from unit.serializer import UserSerializer
-
-
-
 
 
 class Login(APIView):
@@ -58,3 +56,46 @@ class Login(APIView):
                 "msg": "登录失败"
             }
             return JsonResponse(ret)
+
+
+
+
+from dwebsocket.decorators import accept_websocket, require_websocket
+from collections import defaultdict
+# 保存所有接入的用户地址
+allconn = defaultdict(list)
+
+
+@accept_websocket
+def Weblogin(request,flag):
+    global allconn
+    print(flag)
+    if not request.is_websocket():  # 判断是不是websocket连接
+        try:  # 如果是普通的http方法
+            message = request.GET['message']
+            return JsonResponse(message)
+        except:
+            return JsonResponse({"msg": "no ok"})
+    else:
+        try:
+            if flag == 'web':
+            # 生成每个uuid,用来区分登录
+                client_id = uuid.uuid4()
+                allconn[str(client_id)] = request.websocket
+                print(allconn)
+                for message in request.websocket:
+                    # 将client_id转为字符串再转为字节发送到前端
+                    request.websocket.send(str(client_id).encode('utf-8'))
+                if request.websocket.is_close():
+                    allconn.pop(str(client_id))
+                    print(allconn)
+                    print("close")
+            if flag == 'wx':
+                for message in request.websocket:
+                    mess = json.loads(message.decode())
+                    allconn[mess['flag']].send(message)
+
+        except:
+            allconn.pop(str(client_id))
+            print(allconn)
+            print("close")
