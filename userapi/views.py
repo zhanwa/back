@@ -92,8 +92,11 @@ def Weblogin(request,flag):
                     print("close")
             if flag == 'wx':
                 for message in request.websocket:
-                    mess = json.loads(message.decode())
-                    allconn[mess['flag']].send(message)
+                    try:
+                        mess = json.loads(message.decode())
+                        allconn[mess['flag']].send(message)
+                    except:
+                        pass
 
         except:
             allconn.pop(str(client_id))

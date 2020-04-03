@@ -1,10 +1,13 @@
 import json
+import random
+import threading
+
 from userapi import models
 from rest_framework.views import APIView
 from rest_framework import exceptions
 from rest_framework.request import Request
 from django.http import JsonResponse
-from unit.serializer import UserSerializer, MeetingSerializer
+from unit.serializer import UserSerializer, MeetingSerializer, MembershipSerializer, VotethemeSerializer, VoteoptionSerializer
 from unit.md5 import getcurrenttime, md5
 
 
@@ -120,7 +123,7 @@ rooms = []
 
 
 @accept_websocket
-def Chat(request, mid, userid):
+def Chat(request, flag, mid, userid):
     # allresult = {}
     # # 获取用户信息
     # userinfo = request.user
@@ -137,24 +140,47 @@ def Chat(request, mid, userid):
             return JsonResponse({"msg": "no ok"})
     else:
         try:
+            # 将用户和响应的socket组成字典
+            user_socket = {flag + userid: request.websocket}
             # 将链接(请求？)存入全局字典中
             if mid not in rooms:
                 rooms.append(mid)
             print(rooms)
-            allconn[str(userid)] = request.websocket
+            for room in rooms:
+                if mid == room:
+                    # 将所有房间放在rooms字典,将所有用户和对应socket嵌套到rooms入面
+                    if room in allconn:
+                        allconn[str(room)] = {**allconn[str(room)], **user_socket}
+                    else:
+                        allconn[str(room)] = user_socket
+
+            # allconn[str(userid)] = request.websocket
             print(allconn)
             # 遍历请求地址中的消息
             for message in request.websocket:
                 # 将信息发至自己的聊天框
                 request.websocket.send(message)
                 # 将信息发至其他所有用户的聊天框
-                for i in allconn:
-                    if i != str(userid):
-                        allconn[i].send(message)
+                for i in allconn[mid]:
+                    if i != str(flag + userid):
+                        # 将message字节编码成unicode字符串再loads成python字典数据格式
+                        mess = json.loads(message.decode())
+                        print(mess)
+                        # 把type修改为otherbarrage
+                        mess["type"] = 'otherbarrage'
+                        message = json.dumps(mess)
+                        allconn[mid][i].send(message.encode('utf-8'))
         except:
-            allconn.pop(str(userid))
+            allconn[mid].pop(str(flag + userid))
+            if not allconn[mid]:
+                allconn.pop(str(mid))
+                rooms.remove(mid)
+            print(rooms)
             print(allconn)
             print("close")
+
+
+import time
 
 
 class Sign(APIView):
@@ -167,14 +193,25 @@ class Sign(APIView):
             "msg": "200"
         }
         try:
-            m_id = request.data['m_id']
-            models.Membership.objects.filter(meeting_id=m_id)
+            cc = []
+            m_id = request.GET.get('m_id')
+            print(m_id)
+            sign = models.Membership.objects.filter(meeting_id=m_id)
+            user = models.User.objects.filter(meeting__m_id=m_id)
+            data0 = UserSerializer(user, many=True).data
+            data = MembershipSerializer(sign, many=True).data
+            # 将签到信息和用户信息共同返回
+            for i in range(len(data)):
+                cc.append({**data[i], **data0[i]})
+            ret["data"] = cc
+            return JsonResponse(ret)
         except:
-            pass
-        return JsonResponse(ret)
+            ret["msg"] = "404"
+            return JsonResponse(ret)
 
     def post(self, request, *args, **kwargs):
         # 签到
+        import datetime
         ret = {
             "data": None,
             "msg": "200"
@@ -183,8 +220,87 @@ class Sign(APIView):
             u_id = request.data['u_id']
             m_id = request.data['m_id']
             print(u_id, m_id)
-            models.Membership.objects.filter(user_id=u_id, meeting_id=m_id).update(sign="1")
+            models.Membership.objects.filter(user_id=u_id, meeting_id=m_id).update(sign=True,
+                                                                                   sign_time=datetime.datetime.now())
             return JsonResponse(ret)
         except:
             ret["msg"] = "404"
             return JsonResponse(ret)
+
+
+import uuid
+
+
+class Signcode(APIView):
+    '''签到二维码'''
+
+    def random_sign(self):
+        sign_flag = uuid.uuid4()
+        print(sign_flag)
+        global timer
+        timer = threading.Timer(3, self.random_sign)
+        timer.start()
+
+    def get(self, request, *args, **kwargs):
+        pass
+
+
+class Vote(APIView):
+    # 处理投票的api
+    def get(self, request, *args, **kwargs):
+        data = {
+            'msg':None,
+            'data':[]
+        }
+        try:
+            # 定义一个空的字典,用来装返回结果
+            m_id = request.GET.get('mid')
+            vote_themes = models.Votetheme.objects.filter(meeting=m_id)
+            # QuerySet对象可迭代,不为空,循环拿到theme_id
+            if vote_themes:
+                for vote_theme in vote_themes:
+                    # 如果这两个放到外面,后面的值会覆盖前面的,因为内存是一样的,你修改了之后,大家就都一样了
+                    r_data = {}
+                    choices = []
+
+                    question = VotethemeSerializer(vote_theme).data
+                    r_data['question'] = question['theme_name']
+                    r_data['time'] = question['vote_time']
+                    # 通过_set反向查询
+                    vote_options = vote_theme.voteoption_set.all()
+                    options = VoteoptionSerializer(vote_options,many=True).data
+                    for i in options:
+                        choices.append(i['option'])
+                    r_data['choices'] = choices
+                    data['data'].append(r_data)
+            data['msg'] = 'ok'
+            return JsonResponse(data)
+
+        except:
+            return JsonResponse({'msg': 'no ok'})
+
+    def post(self, request, *args, **kwargs):
+        try:
+            m_id = request.data['mid']
+            votes = request.data['vote']
+            print(m_id, votes, type(votes))
+            for vote in votes:
+                index = ''.join(str(uuid.uuid4()).split('-'))
+                models.Votetheme.objects.create(theme_name=vote['question'], theme_id=index, meeting_id=m_id)
+
+                for choice in vote['choices']:
+                    models.Voteoption.objects.create(option=choice, votetheme_id=index)
+            return JsonResponse({'msg': 'ok'})
+        except:
+            return JsonResponse({'msg': 'no ok'})
+
+from rest_framework.parsers import MultiPartParser
+class File(APIView):
+    '''
+    处理文件
+    '''
+    # 处理请求头content - type为multipart / form - data的请求体
+    parser_classes = [MultiPartParser,]
+    def post(self, request, *args, **kwargs):
+        print(request,request.FILES)
+        return JsonResponse({'msg':'ok'})

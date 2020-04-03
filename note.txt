@@ -1,6 +1,9 @@
 python manage.py makemigrations
 python manage.py migrate
 
+python manage.py migrate myapp --fake 解决django.db.utils.InternalError: (1050, "Table 'userapi_membership' already exists")
+
+如果数据库重复迁移,记得把django_migrations表中对应的迁移记录删除
 
 django-admin startproject mysite
 python manage.py startapp [appname]
@@ -22,3 +25,14 @@ python manage.py runserver 0.0.0.0:8000
 
 # 因为多对多通过menbers连接的User的,故members__u_id双下划线查找,把User里u_id=u_id的会议返回出来
             obj = models.Meeting.objects.filter(members__u_id=u_id)
+找到meeting的m_id为m_id的user
+user = models.User.objects.filter(meeting__m_id=m_id)
+
+
+每个请求都会重新运行一次视图函数,故写在视图函数里的局部变量不会冲突,但如果是全局变量(global),那么每个请求都能访问并修改他,需要注意同时修改时发生冲突
+
+
+*****************QuerySet是可以迭代的************
+
+ForeignKey 从定义了外键的表查关联的标叫正向查询cardxx=Card.objects.get(card_id='62270121022100000')
+>>> cardxx.card_user 关联的表查询定义外键的标叫反向查询bank.card_set.all()

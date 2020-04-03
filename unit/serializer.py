@@ -26,3 +26,20 @@ class MeetingSerializer(serializers.ModelSerializer):
         model = models.Meeting
         # fields要传入元组,如果一个数据时,记得带上逗号啊
         fields = ('m_id', 'm_title', 'mlabel', 'm_content', 'm_place', 'b_time','mcreator_id')
+class MembershipSerializer(serializers.ModelSerializer):
+    # 解决日期带T
+    sign_time = serializers.DateTimeField(format='%Y-%m-%d %H:%M:%S')
+    class Meta:
+        model = models.Membership
+        # fields要传入元组,如果一个数据时,记得带上逗号啊
+        fields = ('sign','sign_time')
+class VotethemeSerializer(serializers.ModelSerializer):
+    # 解决日期带T
+    vote_time = serializers.DateTimeField(format='%Y-%m-%d %H:%M:%S')
+    class Meta:
+        model = models.Votetheme
+        fields = '__all__'
+class VoteoptionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = models.Voteoption
+        fields = '__all__'
