@@ -40,6 +40,7 @@ INSTALLED_APPS = [
     'dwebsocket',
     'userapi',
     'meetingapi',
+    'django_cleanup.apps.CleanupConfig', #删除旧文件的模块
 ]
 
 MIDDLEWARE = [
@@ -81,7 +82,7 @@ DATABASES = {
         # 'ENGINE': 'django.db.backends.sqlite3',
         # 'NAME': os.path.join(BASE_DIR, 'db.sqlite3'),
         'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'scrapyspider',
+        'NAME': 'finsh',
         'USER': 'root',
         'PASSWORD': '1558759687',
         'HOST': "localhost",
@@ -124,6 +125,12 @@ USE_TZ = False
 # https://docs.djangoproject.com/en/2.2/howto/static-files/
 
 STATIC_URL = '/static/'
+
+#这个目录就是文件上传的地址位置，只要能上传图片，这里肯定是配置了
+MEDIA_URL = '/media/'
+# 相当于加载到根搜索目录
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
 
 REST_FRAMEWORK = dict(
     # 用户验证

@@ -36,3 +36,10 @@ user = models.User.objects.filter(meeting__m_id=m_id)
 
 ForeignKey 从定义了外键的表查关联的标叫正向查询cardxx=Card.objects.get(card_id='62270121022100000')
 >>> cardxx.card_user 关联的表查询定义外键的标叫反向查询bank.card_set.all()
+
+要用这个
+from django.conf import settings
+
+用values获取指定字段
+对多对查询
+username = models.Meeting.objects.get(m_id=m_id).members.all()

@@ -1,7 +1,10 @@
 import json
 import uuid
+from io import BytesIO
+from urllib.request import urlopen
 
-from unit.md5 import md5
+from django.core.files import File
+from unit.md5 import md5, getInetpicture
 from . import models
 from rest_framework.views import APIView
 from rest_framework import exceptions
@@ -38,12 +41,25 @@ class Login(APIView):
         }
         try:
             openid = request.data["openid"]
-            name = request.data["name"]
-            face = request.data["face"]
             token = md5(openid)
-            models.User.objects.update_or_create(
-                openid=openid,
-                defaults={'username': name, 'image': face, 'token': token})
+            isregister = models.User.objects.filter(openid=openid)
+            if isregister:
+                # 已注册,直接更新一下token就行
+                isregister.update(token=token)
+            else:
+                name = request.data["name"]
+                face = request.data["face"]
+                r = urlopen(face)
+                # 将图片地址缓存到bytesio中
+                io = BytesIO(r.read())
+                # 拼接一个文件名
+                img = "{}.jpg".format(uuid.uuid1().hex)
+                #File要加img文件名
+                # print(File(io,img).name)
+                # models.User.objects.update_or_create(
+                #     openid=openid,
+                #     defaults={'username': name, 'image': File(io), 'token': token})
+                models.User.objects.create(openid=openid,username=name,token=token,image=File(io,img))
             obj = models.User.objects.get(openid=openid)
             # 序列化数据存储在data中
             data = UserSerializer(obj).data

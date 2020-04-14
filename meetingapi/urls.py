@@ -1,6 +1,7 @@
+from django.conf import settings
 from django.urls import path, re_path, include
 from . import views
-
+from django.views.static import serve
 urlpatterns = [
     re_path(r'^(?P<version>[v1|v2]+)/setmeeting/$', views.Setmeeting.as_view(), name='Setmeeting'),
     re_path(r'^(?P<version>[v1|v2]+)/getmeeting/$', views.Getmeeting.as_view(), name='Getmeeting'),
@@ -11,5 +12,6 @@ urlpatterns = [
     re_path(r'^(?P<version>[v1|v2]+)/vote/$', views.Vote.as_view(), name='Vote'),
     # 处理文件
     re_path(r'^(?P<version>[v1|v2]+)/file/$', views.File.as_view(), name='File'),
+
 
 ]

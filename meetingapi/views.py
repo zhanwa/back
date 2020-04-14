@@ -2,13 +2,19 @@ import json
 import random
 import threading
 
+from django.utils.encoding import escape_uri_path
 from userapi import models
 from rest_framework.views import APIView
 from rest_framework import exceptions
 from rest_framework.request import Request
-from django.http import JsonResponse
-from unit.serializer import UserSerializer, MeetingSerializer, MembershipSerializer, VotethemeSerializer, VoteoptionSerializer
+from django.http import JsonResponse, FileResponse, Http404
+from unit.serializer import UserSerializer, MeetingSerializer, MembershipSerializer, VotethemeSerializer, \
+    VoteoptionSerializer, DocumentSerializer
 from unit.md5 import getcurrenttime, md5
+
+from bijian import settings
+import time
+import datetime
 
 
 class Setmeeting(APIView):
@@ -61,15 +67,25 @@ class Setmeeting(APIView):
             dec = meetingdata["dec"]
             serect = meetingdata["serect"]
             location = meetingdata["location"]
-            start_date = meetingdata["date"]
+            create_date = meetingdata["date"]
             label = meetingdata["label"]
+            # 会议类型
+            type = meetingdata["type"]
+            # 人数限制
+            limit = meetingdata["limit"]
+            # 时间
+            start_date = meetingdata["start_date"]
+            start_time = meetingdata["start_time"]
+            stop_date = meetingdata["stop_date"]
+            stop_time = meetingdata["stop_time"]
             # 会议标识符
-            sign = md5(serect)
-            create_date = current_time
-            models.Meeting.objects.create(msign_id=sign, m_title=title, c_time=create_date, m_place=location,
-                                          m_content=dec, mcreator_id=u_id, mlabel=label, b_time=start_date)
+            sign = uuid.uuid1().hex
+            models.Meeting.objects.create(msign_id=sign, gcontent=type,vcontent=serect,e_time=start_date,s_time=stop_date,m_title=title, c_time=start_time, m_place=location, m_content=dec, mcreator_id=u_id, mlabel=label, b_time=stop_time,limits=limit)
+
             obj = models.Meeting.objects.get(msign_id=sign)
             data = MeetingSerializer(obj).data
+            # 在menbership中注册为管理员
+            models.Membership.objects.create(user_id=u_id,meeting_id=data["m_id"],admin=True)
             print(data)
             ret["data"] = data
             return JsonResponse(ret)
@@ -80,16 +96,40 @@ class Setmeeting(APIView):
 class Getmeeting(APIView):
     # 返回会议详细数据
     def get(self, request, *args, **kwargs):
-        m_id = request.GET.get('m_id')
-        print(m_id)
-        obj = models.Meeting.objects.get(m_id=m_id)
-        data = MeetingSerializer(obj).data
         ret = {
             "data": None,
             "msg": "ok"
         }
-        ret["data"] = data
-        return JsonResponse(ret)
+        try:
+            m_id = request.GET.get('mid')
+            type = request.GET.get('type')
+            print(m_id, type)
+            if type == 'getmeetingdetail':
+                obj = models.Meeting.objects.get(m_id=m_id)
+                data = MeetingSerializer(obj).data
+                ret["data"] = data
+                return JsonResponse(ret)
+            elif type == 'getappend':
+                data = []
+                obj = models.Membership.objects.values('sign').filter(meeting_id=m_id)
+                username = models.Meeting.objects.get(m_id=m_id).members.all().values("username")
+                for k in username:
+                    print(k)
+                    data.append(k)
+                ret["data"] = data
+                return JsonResponse(ret)
+            elif type == 'getmeetingmember':
+                # 获取报名该会议人数
+                # 通过Meeting抓取到所有参加人员的信息
+                m_append = models.Meeting.objects.get(m_id=m_id).members.all().count()
+                # 已签到人数
+                m_sgin = models.Membership.objects.filter(meeting_id=m_id).count()
+                print(m_append,m_sgin)
+                ret['data']={'m_append':m_append,"m_sign":m_sgin}
+                return JsonResponse(ret)
+        except:
+            ret['data'] = 'no ok'
+            return JsonResponse(ret)
 
     # 声请加入
     def post(self, request, *args, **kwargs):
@@ -180,9 +220,6 @@ def Chat(request, flag, mid, userid):
             print("close")
 
 
-import time
-
-
 class Sign(APIView):
     """处理签到"""
 
@@ -196,9 +233,12 @@ class Sign(APIView):
             cc = []
             m_id = request.GET.get('m_id')
             print(m_id)
+            # 返回签到用用户id
             sign = models.Membership.objects.filter(meeting_id=m_id)
+            # 返回参与用户
             user = models.User.objects.filter(meeting__m_id=m_id)
             data0 = UserSerializer(user, many=True).data
+            print(data0)
             data = MembershipSerializer(sign, many=True).data
             # 将签到信息和用户信息共同返回
             for i in range(len(data)):
@@ -211,7 +251,7 @@ class Sign(APIView):
 
     def post(self, request, *args, **kwargs):
         # 签到
-        import datetime
+
         ret = {
             "data": None,
             "msg": "200"
@@ -220,9 +260,21 @@ class Sign(APIView):
             u_id = request.data['u_id']
             m_id = request.data['m_id']
             print(u_id, m_id)
-            models.Membership.objects.filter(user_id=u_id, meeting_id=m_id).update(sign=True,
-                                                                                   sign_time=datetime.datetime.now())
-            return JsonResponse(ret)
+            sign_member = models.Membership.objects.get(user_id=u_id, meeting_id=m_id)
+            # 如果签到用户参加了会议
+            if sign_member:
+                # 判断是否签到
+                if sign_member.sign:
+                    sign_member.update(sign=True,sign_time=datetime.datetime.now())
+                    ret['data'] = 'success'
+                    return JsonResponse(ret)
+                # 已签到
+                else:
+                    ret['data'] = 'completed'
+                    return JsonResponse(ret)
+            else:
+                ret['data'] = 'fail'
+                return JsonResponse(ret)
         except:
             ret["msg"] = "404"
             return JsonResponse(ret)
@@ -249,8 +301,8 @@ class Vote(APIView):
     # 处理投票的api
     def get(self, request, *args, **kwargs):
         data = {
-            'msg':None,
-            'data':[]
+            'msg': None,
+            'data': []
         }
         try:
             # 定义一个空的字典,用来装返回结果
@@ -268,7 +320,7 @@ class Vote(APIView):
                     r_data['time'] = question['vote_time']
                     # 通过_set反向查询
                     vote_options = vote_theme.voteoption_set.all()
-                    options = VoteoptionSerializer(vote_options,many=True).data
+                    options = VoteoptionSerializer(vote_options, many=True).data
                     for i in options:
                         choices.append(i['option'])
                     r_data['choices'] = choices
@@ -294,13 +346,132 @@ class Vote(APIView):
         except:
             return JsonResponse({'msg': 'no ok'})
 
+
 from rest_framework.parsers import MultiPartParser
+
+
 class File(APIView):
     '''
     处理文件
     '''
     # 处理请求头content - type为multipart / form - data的请求体
-    parser_classes = [MultiPartParser,]
+    parser_classes = [MultiPartParser, ]
+
+    def readFile(self, filename, chunk_size=512):
+        """
+        缓冲流下载文件方法
+        :param filename:
+        :param chunk_size:
+        :return:
+        """
+        with open(filename, 'rb') as f:
+            while True:
+                c = f.read(chunk_size)
+                if c:
+                    yield c
+                else:
+                    break
+
+    def get(self, request, *args, **kwargs):
+        '''请求文件列表'''
+        role = request.GET.get('role')
+        mid = request.GET.get('mid')
+        # 是否为管理者
+        if role == 'manage':
+            try:
+                document_all = models.Document.objects.filter(meeting=mid)
+                data = DocumentSerializer(document_all, many=True).data
+                return JsonResponse({'msg': 'ok', 'data': data})
+            except:
+                return JsonResponse({'msg': 'no ok'})
+        # 是否为参加者
+        elif role == 'append':
+            pass
+        elif role == 'download':
+            """
+            前端传来下载file的id，后端传给它下载地址
+            """
+            file_id = request.GET.get('file_id')
+            doc = models.Document.objects.only('Dpath').filter(id=file_id, meeting=mid).first()
+
+            if doc:
+                doc_url = doc.Dpath
+                doc_url = settings.BASE_DIR + doc_url
+                print(doc_url)
+                try:
+                    res = FileResponse(self.readFile(doc_url))
+                except Exception as e:
+                    raise Http404('文件获取异常')
+                file_end = doc_url.split('.')[-1]
+                if not file_end:
+                    raise Http404('文档路径出错')
+                else:
+                    file_end = file_end.lower()
+                if file_end == "pdf":
+                    res["Content-type"] = "application/pdf"
+                elif file_end == "zip":
+                    res["Content-type"] = "application/zip"
+                elif file_end == "doc":
+                    res["Content-type"] = "application/msword"
+                elif file_end == "xls":
+                    res["Content-type"] = "application/vnd.ms-excel"
+                elif file_end == "docx":
+                    res["Content-type"] = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                elif file_end == "ppt":
+                    res["Content-type"] = "application/vnd.ms-powerpoint"
+                elif file_end == "pptx":
+                    res["Content-type"] = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                else:
+                    raise Http404("文档格式不正确！")
+                doc_filename = escape_uri_path(doc_url.split('/')[-1])
+                # http1.1 中的规范
+                # 设置为inline，会直接打开
+                # attachment 浏览器会开始下载
+                res["Content-Disposition"] = "attachment; filename*=UTF-8''{}".format(doc_filename)
+                return res
+
+            else:
+                return JsonResponse({'msg': 'no ok'})
+
     def post(self, request, *args, **kwargs):
-        print(request,request.FILES)
-        return JsonResponse({'msg':'ok'})
+        # 保存路径
+        base_dir = settings.BASE_DIR
+        filepath = base_dir + '/static/'
+        # 取得会议id
+        mid = request.POST.get('mid')
+        # 生成当前时间
+        timeYMD = datetime.datetime.now().strftime('%Y-%m-%d')
+
+        # 取到文件
+        files = request.FILES.get('filename')
+        # 取得附带信息中文件在本地真正的文件名
+        fname = request.POST.get('fname')
+        # 判断文件是否为空
+        if files:
+            # 获取前端上传时的临时文件名
+            filename = files.name
+            # 切割成数据库需要的索引名
+            db_name = ('.').join(filename.split('.')[-2:]).lower()
+            # 获取文件大小
+            filesize = files.size
+            # 获取文件后缀
+            suffix = filename.split('.')[-1].lower()
+            # 判断格式是否正确
+            if suffix in ['ppt', 'pdf', 'doc', 'docx']:
+                try:
+                    with open(filepath + db_name, 'wb+') as f:
+                        for chunk in files.chunks():  # 保证即使文件过大,也不会消耗很大内存
+                            f.write(chunk)
+                    # 存入数据库
+                    db_path = '/static/' + db_name
+                    print(type(fname), type(suffix), type(filesize), type(db_path), type(mid))
+                    models.Document.objects.create(Dname=fname, Dstyle=suffix, Dsize=filesize, Dpath=db_path,
+                                                   meeting_id=mid)
+                    return JsonResponse(
+                        {'msg': 'ok', 'data': {'Dname': fname, 'Dstyle': suffix, 'Dtime': timeYMD, 'Dstatus': True}})
+                except:
+                    return JsonResponse({'msg': 'no ok'})
+            else:
+                return JsonResponse({'msg': '格式错误'})
+        else:
+            return JsonResponse({'msg': '发送失败'})
