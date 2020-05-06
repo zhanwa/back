@@ -22,16 +22,16 @@ class Friends(models.Model):
 
 class User(models.Model):
     u_id = models.AutoField(primary_key=True)
-    openid = models.CharField(unique=True, max_length=255)
-    username = models.CharField(unique=True, max_length=255)
-    email = models.EmailField(db_column='Email', max_length=255)  # Field name made lowercase.
-    image = models.ImageField(upload_to='avatarImg',null=True)
-    sex = models.NullBooleanField()  # 状态(1:男 0:女 空:未填)
-    sign = models.CharField(max_length=500, blank=True, null=True)
-    token = models.CharField(unique=True, max_length=255)
+    openid = models.CharField(unique=True, max_length=255) #openid
+    username = models.CharField(unique=True, max_length=255) # 用户名
+    email = models.EmailField(db_column='Email', max_length=255)  # e-mail
+    image = models.ImageField(upload_to='avatarImg',null=True) # 头像
+    sex = models.NullBooleanField()  # 状态(1:男 0:女 空:未填) # 性别
+    sign = models.CharField(max_length=500, blank=True, null=True) #签名
+    token = models.CharField(unique=True, max_length=255) #token
     address = models.CharField(max_length=255, blank=True, null=True) #地址
-    label1 = models.CharField(max_length=45, blank=True, null=True)
-    label2 = models.CharField(max_length=45, blank=True, null=True)
+    label1 = models.CharField(max_length=45, blank=True, null=True) # 地区
+    label2 = models.CharField(max_length=45, blank=True, null=True) # phone
 
     def __str__(self):
         return self.username
@@ -78,23 +78,16 @@ class Membership(models.Model):
     grade = models.CharField(max_length=255, blank=True, null=True)
 
 
-class Relation(models.Model):
-    r_id = models.AutoField(primary_key=True)
-    u_id = models.ForeignKey('User', models.DO_NOTHING, db_column='uid', blank=True, null=True)
-    m_id = models.ForeignKey('Meeting', models.DO_NOTHING, db_column='mid', blank=True, null=True)
-
-    class Meta:
-        db_table = 'relation'
-
 
 # 抽奖表
 class Lottery(models.Model):
-    award_name = models.CharField(max_length=255, blank=True, null=True)
+    award_name = models.CharField(max_length=255, blank=True, null=True) #奖品名称及数量[{award:'',num:''}]
     meeting = models.ForeignKey(Meeting, on_delete=models.CASCADE) # 外键关联会议
-    user = models.ForeignKey(User, on_delete=models.CASCADE) # 外键关联用户
-    award_time = models.DateTimeField(auto_now=True)
-    award_member = models.CharField(max_length=32, blank=True, null=True)
-    award_leval = models.CharField(max_length=32, blank=True, null=True)
+    award_time = models.DateTimeField(auto_now=True) # 发起时间
+    award_member = models.CharField(max_length=32, blank=True, null=True) #抽取人数
+    award_leval = models.CharField(max_length=32, blank=True, null=True) #抽奖等级
+    award_type =  models.CharField(max_length=32, blank=True, null=True) #抽奖方式
+    award_membership = models.ManyToManyField(User)
 
     def __str__(self):
         return self.award_name
@@ -138,6 +131,13 @@ class Document(models.Model):
     objects = models.Manager()
     def __str__(self):
         return self.Dname
+# 收藏表
+class Collection(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE) # 多对一 一个用户可收藏多个东西
+    product_name = models.CharField(max_length=255, blank=True, null=True) # 名称,冗余设计
+    product_type = models.CharField(max_length=255, blank=True, null=True) #类型
+    product_id = models.CharField(max_length=32, blank=True, null=True) #产品id
+    collect_time = models.DateTimeField(auto_now=True) # 收藏时间
 
 # 签到表
 class Usersign(models.Model):

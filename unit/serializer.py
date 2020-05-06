@@ -18,14 +18,14 @@ class UserSerializers(serializers.Serializer):
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.User
-        fields = ('u_id', 'token', 'username', 'image')
+        fields = '__all__'
 
 
 class MeetingSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.Meeting
         # fields要传入元组,如果一个数据时,记得带上逗号啊
-        fields = ('m_id', 'm_title', 'mlabel', 'm_content', 'm_place', 'b_time','mcreator_id','status')
+        fields = '__all__'
 class MembershipSerializer(serializers.ModelSerializer):
     # 解决日期带T
     sign_time = serializers.DateTimeField(format='%Y-%m-%d %H:%M:%S')
@@ -49,4 +49,12 @@ class DocumentSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = models.Document
+        fields = '__all__'
+
+class LotterySerializer(serializers.ModelSerializer):
+    '''抽奖表序列化'''
+    award_time = serializers.DateTimeField(format='%Y-%m-%d')
+
+    class Meta:
+        model = models.Lottery
         fields = '__all__'

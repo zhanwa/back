@@ -1,4 +1,5 @@
 import json
+import os
 import random
 import threading
 
@@ -9,7 +10,7 @@ from rest_framework import exceptions
 from rest_framework.request import Request
 from django.http import JsonResponse, FileResponse, Http404
 from unit.serializer import UserSerializer, MeetingSerializer, MembershipSerializer, VotethemeSerializer, \
-    VoteoptionSerializer, DocumentSerializer
+    VoteoptionSerializer, DocumentSerializer, LotterySerializer
 from unit.md5 import getcurrenttime, md5
 
 from bijian import settings
@@ -47,19 +48,23 @@ class Setmeeting(APIView):
         elif opt == "all":
             obj = models.Meeting.objects.all()
             data = MeetingSerializer(obj, many=True).data
+            # # 抓取会议管理员id,加到data中返回
+            # admins = models.Membership.objects.filter(admin=1).values('user_id')
+            # for admin in admins:
+            #     data.append(admin)
+            # print(data)
             ret["data"] = data
             return JsonResponse(ret)
 
     # 创建会议
     def post(self, request, *args, **kwargs):
+        global type
         ret = {
             "data": None,
             "msg": "ok"
         }
         # 获取当前时间
         current_time = getcurrenttime()
-
-        print(request.data)
         try:
             meetingdata = request.data
             u_id = meetingdata["u_id"]
@@ -68,7 +73,8 @@ class Setmeeting(APIView):
             serect = meetingdata["serect"]
             location = meetingdata["location"]
             create_date = meetingdata["date"]
-            label = meetingdata["label"]
+            # 标签
+            label = json.dumps(meetingdata["label"], ensure_ascii=False)
             # 会议类型
             type = meetingdata["type"]
             # 人数限制
@@ -80,17 +86,67 @@ class Setmeeting(APIView):
             stop_time = meetingdata["stop_time"]
             # 会议标识符
             sign = uuid.uuid1().hex
-            models.Meeting.objects.create(msign_id=sign, gcontent=type,vcontent=serect,e_time=start_date,s_time=stop_date,m_title=title, c_time=start_time, m_place=location, m_content=dec, mcreator_id=u_id, mlabel=label, b_time=stop_time,limits=limit)
+            # 创建会议
+            models.Meeting.objects.create(msign_id=sign, gcontent=type, vcontent=serect, e_time=start_date,
+                                          s_time=stop_date, m_title=title, c_time=start_time, m_place=location,
+                                          m_content=dec, mcreator_id=u_id, mlabel=label, b_time=stop_time, limits=limit)
 
             obj = models.Meeting.objects.get(msign_id=sign)
             data = MeetingSerializer(obj).data
             # 在menbership中注册为管理员
-            models.Membership.objects.create(user_id=u_id,meeting_id=data["m_id"],admin=True)
+            models.Membership.objects.create(user_id=u_id, meeting_id=data["m_id"], admin=True)
             print(data)
             ret["data"] = data
             return JsonResponse(ret)
         except:
             return JsonResponse({"ddd": "not"})
+
+    def put(self, request, *args, **kwargs):
+        """用户修改会议"""
+        ret = {
+            "data": None,
+            "msg": "ok"
+        }
+        # 获取当前时间
+        current_time = getcurrenttime()
+        try:
+            meetingdata = request.data
+            m_id = meetingdata["mid"]
+            title = meetingdata["title"]
+            dec = meetingdata["dec"]
+            serect = meetingdata["serect"]
+            location = meetingdata["location"]
+            # 标签
+            label = json.dumps(meetingdata["label"], ensure_ascii=False)
+            # 会议类型
+            type = meetingdata["type"]
+            # 人数限制
+            limit = meetingdata["limit"]
+            # 时间
+            start_date = meetingdata["start_date"]
+            start_time = meetingdata["start_time"]
+            stop_date = meetingdata["stop_date"]
+            stop_time = meetingdata["stop_time"]
+            # 修改会议
+            models.Meeting.objects.filter(m_id=m_id).update(gcontent=type, vcontent=serect, e_time=start_date,
+                                                            s_time=stop_date, m_title=title, c_time=start_time,
+                                                            m_place=location, m_content=dec, mlabel=label,
+                                                            b_time=stop_time, limits=limit)
+            return JsonResponse(ret)
+        except:
+            return JsonResponse({"ddd": "not"})
+
+    def delete(self, request, *args, **kwargs):
+        '''删除会议'''
+        mid = request.data["mid"]
+        print(mid)
+        # 先删除membership的关系,不能直接删除会议
+        try:
+            models.Membership.objects.filter(meeting_id=mid).delete()
+            models.Meeting.objects.filter(m_id=mid).delete()
+            return JsonResponse({'msg': 'ok'})
+        except:
+            return JsonResponse({'msg': 'no ok'})
 
 
 class Getmeeting(APIView):
@@ -104,11 +160,13 @@ class Getmeeting(APIView):
             m_id = request.GET.get('mid')
             type = request.GET.get('type')
             print(m_id, type)
+            # 返回单个具体会议详情
             if type == 'getmeetingdetail':
                 obj = models.Meeting.objects.get(m_id=m_id)
                 data = MeetingSerializer(obj).data
                 ret["data"] = data
                 return JsonResponse(ret)
+            # 返回签到人数和报名人数
             elif type == 'getappend':
                 data = []
                 obj = models.Membership.objects.values('sign').filter(meeting_id=m_id)
@@ -118,14 +176,29 @@ class Getmeeting(APIView):
                     data.append(k)
                 ret["data"] = data
                 return JsonResponse(ret)
+            # 返回会议详情页信息
             elif type == 'getmeetingmember':
+                # 获取用户id,用来判断用户是否已加入该会议
+                u_id = request.GET.get('uid')
                 # 获取报名该会议人数
                 # 通过Meeting抓取到所有参加人员的信息
                 m_append = models.Meeting.objects.get(m_id=m_id).members.all().count()
                 # 已签到人数
-                m_sgin = models.Membership.objects.filter(meeting_id=m_id).count()
-                print(m_append,m_sgin)
-                ret['data']={'m_append':m_append,"m_sign":m_sgin}
+                m_sgin = models.Membership.objects.filter(meeting_id=m_id, sign=1).count()
+                # 获取会议信息
+                meeting_obj = models.Meeting.objects.get(m_id=m_id)
+                # 管理员登录密码,暂无
+
+                # 会议标识符,用来生成会议邀请码
+                flag = meeting_obj.msign_id
+
+                # 判断用户是否参加该会议
+                isappend = models.Membership.objects.get(user_id=u_id, meeting_id=m_id)
+                if isappend:
+                    isappend = '1'
+                else:
+                    isappend = '0'
+                ret['data'] = {'m_append': m_append, "m_sign": m_sgin, 'flag': flag, 'append_flag': isappend}
                 return JsonResponse(ret)
         except:
             ret['data'] = 'no ok'
@@ -137,21 +210,27 @@ class Getmeeting(APIView):
             "data": None,
             "msg": "200"
         }
-        try:
-            joindata = request.data
-            u_id = joindata["u_id"]
-            m_id = joindata['m_id']
-            print(u_id, m_id)
-            obj = models.Membership.objects.filter(user_id=u_id, meeting_id=m_id)
-            if not obj:
-                models.Membership.objects.create(user_id=u_id, meeting_id=m_id)
-                return JsonResponse(ret)
-            else:
-                ret["data"] = "请勿重复报名"
-                ret["msg"] = "302"
-                return JsonResponse(ret)
-        except:
-            return JsonResponse({"ddd": "not"})
+        joindata = request.data
+        type = joindata['type']
+        u_id = joindata["u_id"]
+        m_id = joindata['m_id']
+        # 加入会议
+        if type == 'join':
+            try:
+                obj = models.Membership.objects.filter(user_id=u_id, meeting_id=m_id)
+                if not obj:
+                    models.Membership.objects.create(user_id=u_id, meeting_id=m_id)
+                    return JsonResponse(ret)
+                else:
+                    ret["data"] = "请勿重复报名"
+                    ret["msg"] = "302"
+                    return JsonResponse(ret)
+            except:
+                return JsonResponse({"ddd": "not"})
+        # 退订会议
+        elif type == 'back':
+            models.Membership.objects.filter(user_id=u_id, meeting_id=m_id).delete()
+            return JsonResponse(ret)
 
 
 from dwebsocket.decorators import accept_websocket, require_websocket
@@ -233,6 +312,17 @@ class Sign(APIView):
             cc = []
             m_id = request.GET.get('m_id')
             print(m_id)
+            # 如果type=sugnin,只取签到了的用户
+            if request.GET.get('type') == 'signin':
+                sign = models.Membership.objects.filter(meeting_id=m_id, sign=True)
+                user = models.User.objects.filter(meeting__m_id=m_id)
+                for s in sign:
+                    for u in user:
+                        if s.user_id == u.id:
+                            cc.append(u.image)
+                            break
+                data = MembershipSerializer(sign, many=True).data
+                return JsonResponse({'msg': 'ok', 'data': cc})
             # 返回签到用用户id
             sign = models.Membership.objects.filter(meeting_id=m_id)
             # 返回参与用户
@@ -265,7 +355,7 @@ class Sign(APIView):
             if sign_member:
                 # 判断是否签到
                 if sign_member.sign:
-                    sign_member.update(sign=True,sign_time=datetime.datetime.now())
+                    sign_member.update(sign=True, sign_time=datetime.datetime.now())
                     ret['data'] = 'success'
                     return JsonResponse(ret)
                 # 已签到
@@ -305,24 +395,32 @@ class Vote(APIView):
             'data': []
         }
         try:
-            # 定义一个空的字典,用来装返回结果
+            vote_id = request.GET.get('vote_id')
+            print(vote_id)
+            if vote_id:  # 如果存在,只抓取相应的投票信息
+                vote_theme = models.Votetheme.objects.get(theme_id=vote_id)
+                vote_options = vote_theme.voteoption_set.all()
+                options = VoteoptionSerializer(vote_options, many=True).data
+                return JsonResponse({'msg': 'ok', 'data': options})
             m_id = request.GET.get('mid')
+            print(m_id)
             vote_themes = models.Votetheme.objects.filter(meeting=m_id)
             # QuerySet对象可迭代,不为空,循环拿到theme_id
             if vote_themes:
                 for vote_theme in vote_themes:
                     # 如果这两个放到外面,后面的值会覆盖前面的,因为内存是一样的,你修改了之后,大家就都一样了
-                    r_data = {}
-                    choices = []
+                    r_data = {}  # 问题数据
+                    choices = []  # 选项
 
                     question = VotethemeSerializer(vote_theme).data
                     r_data['question'] = question['theme_name']
                     r_data['time'] = question['vote_time']
+                    r_data['flag'] = question['theme_id']
                     # 通过_set反向查询
                     vote_options = vote_theme.voteoption_set.all()
                     options = VoteoptionSerializer(vote_options, many=True).data
                     for i in options:
-                        choices.append(i['option'])
+                        choices.append(i)
                     r_data['choices'] = choices
                     data['data'].append(r_data)
             data['msg'] = 'ok'
@@ -333,16 +431,41 @@ class Vote(APIView):
 
     def post(self, request, *args, **kwargs):
         try:
-            m_id = request.data['mid']
-            votes = request.data['vote']
-            print(m_id, votes, type(votes))
-            for vote in votes:
-                index = ''.join(str(uuid.uuid4()).split('-'))
-                models.Votetheme.objects.create(theme_name=vote['question'], theme_id=index, meeting_id=m_id)
+            # 参与者投票
+            if request.data['type'] == 'vote_append':
+                uid = request.data['uid']
+                oid = request.data['option_id']
+                print(uid, oid)
+                for k, v in oid.items():
+                    print(k, v)
+                    # 插入用户投票记录
+                    vote = models.Voteuser.objects.filter(username=uid, votetheme_id=k)
+                    if vote:
+                        vote.update(answer=v)
+                    else:
+                        models.Voteuser.objects.create(username=uid, votetheme_id=k, answer=v)
+                    # 更新投票总数
+                    option = models.Voteoption.objects.filter(id=v)
+                    if option[0].result:
+                        result = int(option[0].result) + 1
+                        option.update(result=result)
+                    else:
+                        option.update(result=1)
 
-                for choice in vote['choices']:
-                    models.Voteoption.objects.create(option=choice, votetheme_id=index)
-            return JsonResponse({'msg': 'ok'})
+                return JsonResponse({'msg': 'ok'})
+
+            # 投票发起
+            else:
+                m_id = request.data['mid']
+                votes = request.data['vote']
+                print(m_id, votes, type(votes))
+                for vote in votes:
+                    index = ''.join(str(uuid.uuid4()).split('-'))
+                    models.Votetheme.objects.create(theme_name=vote['question'], theme_id=index, meeting_id=m_id)
+
+                    for choice in vote['choices']:
+                        models.Voteoption.objects.create(option=choice, votetheme_id=index)
+                return JsonResponse({'msg': 'ok'})
         except:
             return JsonResponse({'msg': 'no ok'})
 
@@ -386,7 +509,12 @@ class File(APIView):
                 return JsonResponse({'msg': 'no ok'})
         # 是否为参加者
         elif role == 'append':
-            pass
+            try:
+                document_all = models.Document.objects.filter(meeting=mid, Dstatus=1)
+                data = DocumentSerializer(document_all, many=True).data
+                return JsonResponse({'msg': 'ok', 'data': data})
+            except:
+                return JsonResponse({'msg': 'no ok'})
         elif role == 'download':
             """
             前端传来下载file的id，后端传给它下载地址
@@ -439,6 +567,8 @@ class File(APIView):
         filepath = base_dir + '/static/'
         # 取得会议id
         mid = request.POST.get('mid')
+        print(mid)
+        print(request.FILES)
         # 生成当前时间
         timeYMD = datetime.datetime.now().strftime('%Y-%m-%d')
 
@@ -446,6 +576,7 @@ class File(APIView):
         files = request.FILES.get('filename')
         # 取得附带信息中文件在本地真正的文件名
         fname = request.POST.get('fname')
+        print(fname)
         # 判断文件是否为空
         if files:
             # 获取前端上传时的临时文件名
@@ -465,13 +596,70 @@ class File(APIView):
                     # 存入数据库
                     db_path = '/static/' + db_name
                     print(type(fname), type(suffix), type(filesize), type(db_path), type(mid))
-                    models.Document.objects.create(Dname=fname, Dstyle=suffix, Dsize=filesize, Dpath=db_path,
-                                                   meeting_id=mid)
-                    return JsonResponse(
-                        {'msg': 'ok', 'data': {'Dname': fname, 'Dstyle': suffix, 'Dtime': timeYMD, 'Dstatus': True}})
+                    if fname:
+                        models.Document.objects.create(Dname=fname, Dstyle=suffix, Dsize=filesize, Dpath=db_path,
+                                                       meeting_id=mid)
+                        return JsonResponse(
+                            {'msg': 'ok',
+                             'data': {'Dname': fname, 'Dstyle': suffix, 'Dtime': timeYMD, 'Dstatus': True}})
+                    else:
+                        models.Document.objects.create(Dname=db_name, Dstyle=suffix, Dsize=filesize, Dpath=db_path,
+                                                       meeting_id=mid)
+                        return JsonResponse(
+                            {'msg': 'ok',
+                             'data': {'Dname': db_name, 'Dstyle': suffix, 'Dtime': timeYMD, 'Dstatus': True,
+                                      'Dsize': filesize}})
+
+
                 except:
                     return JsonResponse({'msg': 'no ok'})
             else:
                 return JsonResponse({'msg': '格式错误'})
         else:
             return JsonResponse({'msg': '发送失败'})
+
+    def delete(self, request, *args, **kwargs):
+        mid = request.GET.get('mid')
+        # 要删除的文件id
+        fid = request.GET.get('fid')
+        try:
+            del_file = models.Document.objects.filter(id=fid,meeting_id=mid)
+            if del_file:
+                c_file = del_file[0]
+                c_file.delete()
+                # 要删除文件的路径
+                del_file_path = settings.BASE_DIR+ c_file.Dpath
+                # os.remove可删除文件
+                if os.path.exists(del_file_path):
+                    os.remove(del_file_path)
+                    return JsonResponse({'msg': 'ok'})
+            else:
+
+                return JsonResponse({'msg': 'no ok'})
+        except:
+            return JsonResponse({'msg': 'no ok'})
+
+
+class Lottery(APIView):
+    '''处理抽奖'''
+
+    def get(self, request, *args, **kwargs):
+        '''获取奖品列表'''
+        mid = request.GET.get('mid')
+        type = request.GET.get('type')
+        if type == "getLotteryList":
+            lottery_lists = models.Meeting.objects.get(m_id=mid).lottery_set.all()
+            lottery_list = LotterySerializer(lottery_lists, many=True).data
+            for i in lottery_list:
+                i['award_name'] = eval(i['award_name'])
+            return JsonResponse({'msg': 'ok', 'data': lottery_list})
+        return JsonResponse({'msg': 'ok'})
+
+    def post(self, request, *args, **kwargs):
+        '''发起抽奖'''
+        mid = request.data['mid']
+        lotterys = request.data['lottrey']
+        print(mid, lotterys)
+        for lottery in lotterys:
+            models.Lottery.objects.create(award_name=lottery['awards'], meeting_id=mid, award_leval=lottery['grade'])
+        return JsonResponse({'msg': 'ok'})

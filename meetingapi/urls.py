@@ -12,6 +12,8 @@ urlpatterns = [
     re_path(r'^(?P<version>[v1|v2]+)/vote/$', views.Vote.as_view(), name='Vote'),
     # 处理文件
     re_path(r'^(?P<version>[v1|v2]+)/file/$', views.File.as_view(), name='File'),
+    # 处理抽奖
+    re_path(r'^(?P<version>[v1|v2]+)/lottery/$', views.Lottery.as_view(), name='Lottery'),
 
 
 ]

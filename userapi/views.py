@@ -4,7 +4,8 @@ from io import BytesIO
 from urllib.request import urlopen
 
 from django.core.files import File
-from unit.md5 import md5, getInetpicture
+from rest_framework.parsers import MultiPartParser,JSONParser
+from unit.md5 import md5, getInetpicture,rep
 from . import models
 from rest_framework.views import APIView
 from rest_framework import exceptions
@@ -45,7 +46,8 @@ class Login(APIView):
             isregister = models.User.objects.filter(openid=openid)
             if isregister:
                 # 已注册,直接更新一下token就行
-                isregister.update(token=token)
+                # isregister.update(token=token)
+                pass
             else:
                 name = request.data["name"]
                 face = request.data["face"]
@@ -118,3 +120,80 @@ def Weblogin(request,flag):
             allconn.pop(str(client_id))
             print(allconn)
             print("close")
+
+
+class Usermessage(APIView):
+    '''用户信息'''
+
+    parser_classes = [MultiPartParser,JSONParser, ]
+    def get(self, request, *args, **kwargs):
+        data = rep()
+        uid = request.GET.get('uid')
+        user_message = models.User.objects.get(u_id=uid)
+        user_message = UserSerializer(instance=user_message).data
+        data["data"] = user_message
+        return JsonResponse(data)
+
+    def post(self, request, *args, **kwargs):
+        data = rep()
+        type = request.data['type']
+        uid = request.data['uid']
+        if type == 'avatar':
+            # 头像修改
+            avatar =  request.FILES.get('avator')
+            # 下面的update方法是不能更新正确更新保存的文件路径的，除非我们自己手动拼接文件路径，然后img=路径来进行update更新
+            # models.User.objects.filter(u_id=uid).update(image=avatar)
+            # 已经使用一个清理就图片模块来删除掉就得头像
+            obj = models.User.objects.get(u_id=uid)
+            obj.image = avatar
+            obj.save()
+            rep_avatar = UserSerializer(instance=obj).data['image']
+            data['data'] = rep_avatar
+            return JsonResponse(data)
+
+clients=defaultdict(list) # 创建客户端列表,保存在线客户端
+rooms = defaultdict(list) # 保存房间号 格式为{room_number:[uid....]}
+@accept_websocket
+def Wss(request):
+    global clients
+    global rooms
+    if request.is_websocket():  # 是websocket连接
+        try:
+            client_name = uuid.uuid1().hex
+            clients[client_name] = request.websocket
+            print(clients)
+            for message in request.websocket:
+                request.websocket.send(message)  # 发送消息到客户端
+                print(message)
+                # 将信息转为python字符
+                mess = json.loads(message.decode())
+                print(mess)
+                try:
+                    # 进入会议
+                    if mess['type'] == 'manage' or mess['type'] == 'append':
+                        rooms[int(mess['mid'])].append(client_name)
+                        print(rooms)
+                    # 退出会议
+                    if mess['type'] == 'out_meeting':
+                        rooms[int(mess['mid'])].remove(client_name)
+                        print(rooms[int(mess['mid'])])
+                    if mess['type'] == 'vote':
+                        for i in rooms[int(mess['mid'])]:
+                            print(i)
+                            clients[i].send(message)
+                except Exception as c:
+                    pass
+        except Exception as e:
+            print('关闭')
+            clients.pop(client_name)
+            print(clients)
+            try:
+                rooms[int(mess['mid'])].remove(client_name)
+            except:
+                pass
+    else:
+        return JsonResponse({'msg':'nook'})
+
+
+
+

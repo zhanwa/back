@@ -127,7 +127,7 @@ USE_TZ = False
 STATIC_URL = '/static/'
 
 #这个目录就是文件上传的地址位置，只要能上传图片，这里肯定是配置了
-MEDIA_URL = '/media/'
+MEDIA_URL = 'media/'
 # 相当于加载到根搜索目录
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 

@@ -21,3 +21,8 @@ def getcurrenttime():
 # 获取网络图片
 def getInetpicture(url):
     request.urlretrieve(url,'media/avatarImg')
+
+#响应返回基本格式
+def rep():
+    data = {'msg':'ok','data':None}
+    return data
